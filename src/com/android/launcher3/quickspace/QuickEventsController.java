@@ -25,7 +25,6 @@ import android.content.IntentFilter;
 import android.content.res.Resources;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.content.SharedPreferences;
 import android.graphics.drawable.Drawable;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
@@ -47,16 +46,17 @@ import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 
 import java.util.Calendar;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.android.launcher3.util.MediaSessionManagerHelper;
 import com.android.launcher3.util.MSMHProxy;
 
 public class QuickEventsController {
 
-    private static final String SETTING_DEVICE_INTRO_COMPLETED = "device_introduction_completed";
     private final Context mContext;
     private final Resources mResources;
 
@@ -69,10 +69,8 @@ public class QuickEventsController {
 
     private boolean mIsQuickEvent = false;
     private boolean mRegistered = false;
-
-    // Device Intro
-    private boolean mIsFirstTimeDone = false;
-    private SharedPreferences mPreferences;
+    
+    private final Map<Integer, String[]> mCachedPSAMap = new HashMap<>();
 
     // PSA + Personality
     private String[] mPSAStr;
@@ -96,8 +94,6 @@ public class QuickEventsController {
     }
 
     public void initQuickEvents() {
-        mPreferences = mContext.getSharedPreferences(LauncherFiles.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE);
-        mIsFirstTimeDone = mPreferences.getBoolean(SETTING_DEVICE_INTRO_COMPLETED, false);
         registerPSAListener();
         updateQuickEvents();
     }
@@ -120,46 +116,9 @@ public class QuickEventsController {
 
     public void updateQuickEvents() {
         if (!mRegistered) return;
-        if (mIsFirstTimeDone) {
-            nowPlayingEvent();
-            initNowPlayingEvent();
-            psonalityEvent();
-        } else {
-            deviceIntroEvent();
-        }
-    }
-
-    private void deviceIntroEvent() {
-        mIsQuickEvent = true;
-
-        if (Utilities.useAlternativeQuickspaceUI(mContext)) {
-            mEventTitle = mResources.getString(R.string.quick_event_rom_intro_welcome_ext);
-        } else {
-            mEventTitle = mResources.getString(R.string.quick_event_rom_intro_welcome);
-        }
-        mPSAStr = mResources.getStringArray(R.array.welcome_message_variants);
-        mEventTitleSub = mPSAStr[getLuckyNumber(0, mPSAStr.length - 1)];
-        mEventSubIcon = ContextCompat.getDrawable(mContext, R.drawable.ic_quickspace_crdroid);
-        mGreetings = mResources.getString(R.string.quickspace_grt_general);
-        mClockExt = mResources.getString(R.string.quickspace_ext_two);
-
-        mEventTitleSubAction = new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                mContext.getSharedPreferences(LauncherFiles.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
-                        .edit()
-                        .putBoolean(SETTING_DEVICE_INTRO_COMPLETED, true)
-                        .commit();
-                Intent intent = new Intent(Intent.ACTION_MAIN);
-                intent.addCategory(Intent.CATEGORY_HOME);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-                try {
-                    Launcher.getLauncher(mContext).startActivitySafely(view, intent, null);
-                } catch (ActivityNotFoundException ex) {
-                }
-                mIsQuickEvent = false;
-            }
-        };
+        nowPlayingEvent();
+        initNowPlayingEvent();
+        psonalityEvent();
     }
 
     private void nowPlayingEvent() {
@@ -278,15 +237,15 @@ public class QuickEventsController {
 
     private String[] getPSAStr(int hour) {
         if (hour >= 0 && hour <= 3) {
-            return mResources.getStringArray(R.array.quickspace_psa_midnight);
+            return getCachedArray(R.array.quickspace_psa_midnight);
         } else if (hour >= 5 && hour <= 9) {
-            return mResources.getStringArray(R.array.quickspace_psa_morning);
+            return getCachedArray(R.array.quickspace_psa_morning);
         } else if (hour >= 12 && hour <= 15) {
-            return mResources.getStringArray(R.array.quickspace_psa_noon);
+            return getCachedArray(R.array.quickspace_psa_noon);
         } else if (hour >= 16 && hour <= 18) {
-            return mResources.getStringArray(R.array.quickspace_psa_early_evening);
+            return getCachedArray(R.array.quickspace_psa_early_evening);
         } else if (hour >= 19 && hour <= 21) {
-            return mResources.getStringArray(R.array.quickspace_psa_evening);
+            return getCachedArray(R.array.quickspace_psa_evening);
         } else {
             return null;
         }
@@ -294,10 +253,6 @@ public class QuickEventsController {
 
     public boolean isQuickEvent() {
         return mIsQuickEvent;
-    }
-
-    public boolean isDeviceIntroCompleted() {
-        return mIsFirstTimeDone;
     }
 
     public String getTitle() {
@@ -329,7 +284,7 @@ public class QuickEventsController {
     }
 
     public int getLuckyNumber(int min, int max) {
-        return new Random().nextInt((max - min) + 1) + min;
+        return ThreadLocalRandom.current().nextInt(min, max + 1);
     }
 
     public void setMediaInfo(String title, String artist, boolean activePlayback) {
@@ -348,5 +303,12 @@ public class QuickEventsController {
 
     public void onResume() {
         registerPSAListener();
+    }
+    
+    private String[] getCachedArray(int resId) {
+        if (!mCachedPSAMap.containsKey(resId)) {
+            mCachedPSAMap.put(resId, mResources.getStringArray(resId));
+        }
+        return mCachedPSAMap.get(resId);
     }
 }
