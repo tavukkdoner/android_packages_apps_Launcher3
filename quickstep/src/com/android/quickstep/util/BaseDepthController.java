@@ -240,8 +240,7 @@ public class BaseDepthController {
         int newBlur = mCrossWindowBlursEnabled && !hasOpaqueBg && !mPauseBlurs ? (int) (blurAmount
                 * mMaxBlurRadius) : 0;
         int delta = Math.abs(newBlur - previousBlur);
-        if (skipSimilarBlur && delta < Utilities.dpToPx(1) && newBlur != 0 && previousBlur != 0
-                && blurAmount != 1f) {
+        if (skipSimilarBlur && delta < Utilities.dpToPx(1) && newBlur != 0 && previousBlur != 0) {
             Log.d(TAG, "Skipping small blur delta. newBlur: " + newBlur + " previousBlur: "
                     + previousBlur + " delta: " + delta + " surface: " + blurSurface);
             return;
@@ -336,18 +335,10 @@ public class BaseDepthController {
 
     private void setDepth(float depth) {
         depth = Utilities.boundToRange(depth, 0, 1);
-        // Depth of the Launcher state we are in or transitioning to.
-        float targetStateDepth = mLauncher.getStateManager().getState().getDepth(mLauncher);
-
-        float depthF;
-        if (depth == targetStateDepth) {
-            // Always apply the target state depth.
-            depthF = depth;
-        } else {
-            // Round out the depth to dedupe frequent, non-perceptable updates
-            int depthI = (int) (depth * 256);
-            depthF = depthI / 256f;
-        }
+        // Round out the depth to dedupe frequent, non-perceptable updates
+        int depthI = (int) (depth * 256);
+        float depthF = depthI / 256f;
+        
         if (Float.compare(mDepth, depthF) == 0) {
             return;
         }
@@ -422,7 +413,7 @@ public class BaseDepthController {
      * The blur percentage grows linearly with depth, and maxes out at 30% depth.
      */
     private static float mapDepthToBlur(float depth) {
-        return Interpolators.clampToProgress(depth, 0, 0.3f);
+        return Math.min(3 * depth, 1f);
     }
 
     private SurfaceControl.Transaction createTransaction() {
